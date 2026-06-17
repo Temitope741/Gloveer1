@@ -49,7 +49,6 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: "Please provide email and password." });
     }
 
-    // Make sure to select password field explicitly
     const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
 
     if (!user) {
@@ -72,8 +71,12 @@ export const login = async (req, res) => {
       return res.status(403).json({ success: false, message: "Your account has been deactivated. Contact admin." });
     }
 
+    // Update lastLogin without triggering pre-hooks
     user.lastLogin = new Date();
-    await user.save({ validateBeforeSave: false });
+    await User.updateOne(
+      { _id: user._id },
+      { lastLogin: user.lastLogin }
+    );
 
     const token = generateToken(user._id, user.role);
 
@@ -150,17 +153,26 @@ export const changePassword = async (req, res) => {
 
   const user = await User.findById(req.user._id).select("+password");
 
-  if (!(await user.comparePassword(currentPassword))) {
+  const isPasswordValid = await new Promise((resolve, reject) => {
+    user.comparePassword(currentPassword, (err, isMatch) => {
+      if (err) reject(err);
+      resolve(isMatch);
+    });
+  });
+
+  if (!isPasswordValid) {
     return res.status(400).json({ success: false, message: "Current password is incorrect." });
   }
 
   user.password = newPassword;
   await user.save();
 
+  const token = generateToken(user._id, user.role);
+
   res.json({
     success: true,
     message: "Password changed successfully.",
-    token: generateToken(user._id, user.role),
+    token,
     user: {
       id: user._id.toString(),
       name: user.name,
