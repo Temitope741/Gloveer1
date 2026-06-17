@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Password is required"],
       minlength: [6, "Password must be at least 6 characters"],
-      select: false, // never return password in queries
+      select: false,
     },
     role: {
       type: String,
@@ -41,14 +41,12 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    // For learners — which courses they're enrolled in
     enrolledCourses: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Course",
       },
     ],
-    // For instructors — which courses they teach
     teachingCourses: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -62,30 +60,41 @@ const userSchema = new mongoose.Schema(
     passwordResetExpires: Date,
   },
   {
-    timestamps: true, // adds createdAt and updatedAt automatically
+    timestamps: true,
   }
 );
 
 // ─── Hash password before saving ───
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(12);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+userSchema.pre("save", function(next) {
+  const user = this;
+
+  // Only hash if password is modified
+  if (!user.isModified("password")) {
+    return next();
+  }
+
+  // Skip if already hashed
+  if (user.password && user.password.startsWith("$2")) {
+    return next();
+  }
+
+  // Hash the password
+  bcrypt.genSalt(10, (err, salt) => {
+    if (err) return next(err);
+
+    bcrypt.hash(user.password, salt, (err, hash) => {
+      if (err) return next(err);
+      user.password = hash;
+      next();
+    });
+  });
 });
 
 // ─── Compare password method ───
-userSchema.methods.comparePassword = async function (candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+userSchema.methods.comparePassword = function(enteredPassword, callback) {
+  bcrypt.compare(enteredPassword, this.password, callback);
 };
 
-// ─── Remove sensitive fields when converting to JSON ───
-userSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  delete obj.password;
-  delete obj.passwordResetToken;
-  delete obj.passwordResetExpires;
-  return obj;
-};
+const User = mongoose.model("User", userSchema);
 
-export default mongoose.model("User", userSchema);
+export default User;

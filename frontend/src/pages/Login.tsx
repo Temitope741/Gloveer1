@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/Logo";
-import { login, ADMIN_HINT, INSTRUCTOR_HINT, LEARNER_HINT } from "@/lib/store";
+import { login } from "@/lib/store";
 import { toast } from "@/hooks/use-toast";
+import { Eye, EyeOff } from "lucide-react";
 
 const schema = z.object({
   email: z.string().trim().email("Enter a valid email").max(255),
@@ -17,8 +18,9 @@ export default function Login() {
   const nav = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const parsed = schema.safeParse(form);
     if (!parsed.success) {
@@ -27,7 +29,7 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const res = login(form.email, form.password);
+      const res = await login(form.email, form.password);
       const roleLabel = res.role === "admin" ? "Admin" : res.role === "instructor" ? "Instructor" : "Learner";
       toast({ title: "Welcome back!", description: `Signed in as ${roleLabel}` });
       if (res.role === "admin") nav("/admin");
@@ -67,32 +69,30 @@ export default function Login() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
             <Button type="submit" disabled={loading} className="w-full bg-gradient-primary hover:opacity-90">
               {loading ? "Signing in…" : "Login"}
             </Button>
           </form>
-
-          <div className="mt-6 space-y-2">
-            <div className="rounded-lg border border-dashed border-border bg-secondary/40 p-3 text-xs">
-              <div className="font-mono uppercase tracking-wider text-muted-foreground">Admin demo</div>
-              <div className="mt-1">Email: <span className="font-mono">{ADMIN_HINT.email}</span></div>
-              <div>Password: <span className="font-mono">{ADMIN_HINT.password}</span></div>
-            </div>
-            <div className="rounded-lg border border-dashed border-border bg-secondary/40 p-3 text-xs">
-              <div className="font-mono uppercase tracking-wider text-muted-foreground">Instructor demo</div>
-              <div className="mt-1">Email: <span className="font-mono">{INSTRUCTOR_HINT.email}</span></div>
-              <div>Password: <span className="font-mono">{INSTRUCTOR_HINT.password}</span></div>
-            </div>
-            <div className="rounded-lg border border-dashed border-border bg-secondary/40 p-3 text-xs">
-              <div className="font-mono uppercase tracking-wider text-muted-foreground">Learner demo</div>
-              <div className="mt-1">Email: <span className="font-mono">{LEARNER_HINT.email}</span></div>
-              <div>Password: <span className="font-mono">{LEARNER_HINT.password}</span></div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   );
-}
+}   

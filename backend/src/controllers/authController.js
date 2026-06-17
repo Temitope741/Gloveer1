@@ -6,23 +6,17 @@ import { sendWelcomeEmail } from "../services/emailService.js";
 export const register = async (req, res) => {
   const { name, email, password, role } = req.body;
 
-  // Validate required fields
   if (!name || !email || !password) {
-    res.status(400);
-    throw new Error("Please provide name, email and password.");
+    return res.status(400).json({ success: false, message: "Please provide name, email and password." });
   }
 
-  // Prevent self-assigning admin role
   const assignedRole = role === "admin" ? "learner" : (role || "learner");
 
-  // Check if email already exists
   const exists = await User.findOne({ email: email.toLowerCase() });
   if (exists) {
-    res.status(400);
-    throw new Error("An account with this email already exists.");
+    return res.status(400).json({ success: false, message: "An account with this email already exists." });
   }
 
-  // Create user
   const user = await User.create({
     name: name.trim(),
     email: email.toLowerCase().trim(),
@@ -30,7 +24,6 @@ export const register = async (req, res) => {
     role: assignedRole,
   });
 
-  // Send welcome email (non-blocking)
   sendWelcomeEmail(user);
 
   res.status(201).json({
@@ -38,7 +31,7 @@ export const register = async (req, res) => {
     message: "Account created successfully.",
     token: generateToken(user._id, user.role),
     user: {
-      _id: user._id,
+      id: user._id.toString(),
       name: user.name,
       email: user.email,
       role: user.role,
@@ -49,42 +42,57 @@ export const register = async (req, res) => {
 
 // ─── @POST /api/auth/login ───
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    res.status(400);
-    throw new Error("Please provide email and password.");
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: "Please provide email and password." });
+    }
+
+    // Make sure to select password field explicitly
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
+    }
+
+    // Compare password
+    const isPasswordValid = await new Promise((resolve, reject) => {
+      user.comparePassword(password, (err, isMatch) => {
+        if (err) reject(err);
+        resolve(isMatch);
+      });
+    });
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({ success: false, message: "Your account has been deactivated. Contact admin." });
+    }
+
+    user.lastLogin = new Date();
+    await user.save({ validateBeforeSave: false });
+
+    const token = generateToken(user._id, user.role);
+
+    res.json({
+      success: true,
+      message: "Logged in successfully.",
+      token,
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ success: false, message: "Login failed", error: error.message });
   }
-
-  // Find user and include password for comparison
-  const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
-
-  if (!user || !(await user.comparePassword(password))) {
-    res.status(401);
-    throw new Error("Invalid email or password.");
-  }
-
-  if (!user.isActive) {
-    res.status(403);
-    throw new Error("Your account has been deactivated. Contact admin.");
-  }
-
-  // Update last login
-  user.lastLogin = new Date();
-  await user.save({ validateBeforeSave: false });
-
-  res.json({
-    success: true,
-    message: "Logged in successfully.",
-    token: generateToken(user._id, user.role),
-    user: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      avatar: user.avatar,
-    },
-  });
 };
 
 // ─── @GET /api/auth/me ───
@@ -93,9 +101,22 @@ export const getMe = async (req, res) => {
     .populate("enrolledCourses", "title category thumbnail")
     .populate("teachingCourses", "title category thumbnail");
 
+  if (!user) {
+    return res.status(404).json({ success: false, message: "User not found." });
+  }
+
   res.json({
     success: true,
-    user,
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      bio: user.bio,
+      enrolledCourses: user.enrolledCourses,
+      teachingCourses: user.teachingCourses,
+    },
   });
 };
 
@@ -112,7 +133,14 @@ export const updateProfile = async (req, res) => {
   res.json({
     success: true,
     message: "Profile updated.",
-    user,
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      bio: user.bio,
+    },
   });
 };
 
@@ -123,8 +151,7 @@ export const changePassword = async (req, res) => {
   const user = await User.findById(req.user._id).select("+password");
 
   if (!(await user.comparePassword(currentPassword))) {
-    res.status(400);
-    throw new Error("Current password is incorrect.");
+    return res.status(400).json({ success: false, message: "Current password is incorrect." });
   }
 
   user.password = newPassword;
@@ -134,5 +161,12 @@ export const changePassword = async (req, res) => {
     success: true,
     message: "Password changed successfully.",
     token: generateToken(user._id, user.role),
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+    },
   });
 };

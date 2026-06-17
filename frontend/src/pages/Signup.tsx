@@ -23,7 +23,7 @@ export default function Signup() {
   const [role, setRole] = useState<Role>("learner");
   const [loading, setLoading] = useState(false);
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const parsed = schema.safeParse(form);
     if (!parsed.success) {
@@ -32,7 +32,7 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      signUp({ name: form.name, email: form.email, password: form.password, role });
+      await signUp({ name: form.name, email: form.email, password: form.password, role });
       toast({ title: "Account created!", description: "Welcome to Gloveer Virtual Academy 🎓" });
       if (role === "instructor") nav("/instructor");
       else nav("/dashboard");
@@ -61,11 +61,10 @@ export default function Signup() {
                     key={r}
                     type="button"
                     onClick={() => setRole(r)}
-                    className={`rounded-xl border px-4 py-3 text-sm font-medium capitalize transition-all ${
-                      role === r
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-muted-foreground hover:border-primary/40"
-                    }`}
+                    className={`rounded-xl border px-4 py-3 text-sm font-medium capitalize transition-all ${role === r
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40"
+                      }`}
                   >
                     {r === "learner" ? "🎓 Learner" : "👨‍🏫 Instructor"}
                   </button>
