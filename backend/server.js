@@ -26,7 +26,7 @@ connectDB();
 // ─── Middleware ───
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || "https://gloveer.onrender.com, http://localhost:8080",
+  origin: process.env.CLIENT_URL || "http://localhost:8080",
   credentials: true,
 }));
 app.use(morgan("dev"));
