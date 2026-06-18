@@ -6,9 +6,9 @@ import { Button } from "@/components/ui/button";
 
 export default function InstructorDashboard() {
   const user = useAuth();
-  const allCourses = useCourses();
-  const allAssessments = useAssessments();
-  const allSubmissions = useSubmissions();
+  const allCourses = useCourses() || [];
+  const allAssessments = useAssessments() || [];
+  const allSubmissions = useSubmissions() || [];
 
   const myCourses = allCourses.filter((c) => c.instructorId === user?.id);
   const myAssessments = allAssessments.filter((a) => a.createdBy === user?.id);

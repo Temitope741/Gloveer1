@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { AppShell } from "@/components/AppShell";
-import { useAuth, useCourses, useAssessments, useSubmissions, getUsers } from "@/lib/store";
+import { useAuth, useCourses, useAssessments, useSubmissions, useUsers } from "@/lib/store";
 import { BookOpen, Users, ClipboardList, FileText, Plus, ArrowRight, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -9,7 +9,7 @@ export default function AdminDashboard() {
   const courses = useCourses();
   const assessments = useAssessments();
   const submissions = useSubmissions();
-  const users = getUsers();
+  const users = useUsers();
 
   const learners = users.filter((u) => u.role === "learner");
   const instructors = users.filter((u) => u.role === "instructor");

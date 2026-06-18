@@ -1,14 +1,38 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
+const AUTH_TOKEN_KEY = "authToken";
+
 let authToken: string | null = null;
 
-// ─── Helper: Store token in memory ───
+// Initialize token from localStorage on app load
+function initializeToken() {
+  authToken = localStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+// Call on app startup
+initializeToken();
+
+// ─── Helper: Store token in memory AND localStorage ───
 export function setAuthToken(token: string | null) {
   authToken = token;
+  if (token) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
 }
 
 export function getAuthToken(): string | null {
+  // Always check localStorage first in case it was updated elsewhere
+  if (!authToken) {
+    authToken = localStorage.getItem(AUTH_TOKEN_KEY);
+  }
   return authToken;
+}
+
+export function clearAuthToken() {
+  authToken = null;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
 }
 
 // ─── Helper: Make API requests ───
@@ -24,18 +48,25 @@ async function request<T>(
   };
 
   // Add JWT token if available
-  if (authToken) {
-    headers["Authorization"] = `Bearer ${authToken}`;
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const response = await fetch(url, {
     ...options,
     headers,
-    credentials: "include", // For cookies if needed later
+    credentials: "include",
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
+    
+    // Clear token on 401 Unauthorized
+    if (response.status === 401) {
+      clearAuthToken();
+    }
+    
     throw new Error(error.message || `HTTP ${response.status}`);
   }
 
@@ -57,7 +88,7 @@ export const authAPI = {
     }),
 
   logout: () => {
-    setAuthToken(null);
+    clearAuthToken();
     return Promise.resolve();
   },
 
@@ -129,6 +160,12 @@ export const assessmentsAPI = {
 
   delete: (id: string) =>
     request<void>(`/assessments/${id}`, { method: "DELETE" }),
+
+  grade: (id: string, score: number, feedback: string) =>
+    request<any>(`/assessments/${id}/grade`, {
+      method: "PUT",
+      body: JSON.stringify({ score, feedback }),
+    }),
 };
 
 // ─── Submissions API ───

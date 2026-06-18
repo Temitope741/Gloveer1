@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import * as React from "react";
 import {
   authAPI,
   usersAPI,
@@ -86,7 +87,7 @@ export type Submission = {
   status: "submitted" | "graded";
 };
 
-// ---------- In-Memory Cache (replaces localStorage) ----------
+// ---------- In-Memory Cache ----------
 let cache = {
   currentUser: null as (User & { isAdmin: boolean }) | null,
   users: [] as User[],
@@ -108,6 +109,36 @@ export function subscribe(fn: () => void) {
   return () => listeners.delete(fn);
 }
 
+// ---------- Auth Token Management ----------
+const AUTH_USER_KEY = "authUser";
+
+function setCurrentUserCache(user: User & { isAdmin: boolean }) {
+  cache.currentUser = user;
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+}
+
+function clearCurrentUserCache() {
+  cache.currentUser = null;
+  localStorage.removeItem(AUTH_USER_KEY);
+}
+
+function loadCurrentUserFromStorage() {
+  const stored = localStorage.getItem(AUTH_USER_KEY);
+  if (stored) {
+    try {
+      cache.currentUser = JSON.parse(stored);
+      return cache.currentUser;
+    } catch {
+      clearCurrentUserCache();
+      return null;
+    }
+  }
+  return null;
+}
+
+// Initialize on app start
+loadCurrentUserFromStorage();
+
 // ---------- Auth ----------
 export type Session = { userId: string; role: Role } | null;
 
@@ -119,10 +150,12 @@ export async function getCurrentUser(): Promise<(User & { isAdmin: boolean }) | 
 
   try {
     const user = await authAPI.getMe();
-    cache.currentUser = { ...user, isAdmin: user.role === "admin" };
-    return cache.currentUser;
+    const userWithAdmin = { ...user, isAdmin: user.role === "admin" };
+    setCurrentUserCache(userWithAdmin);
+    return userWithAdmin;
   } catch (error) {
     setAuthToken(null);
+    clearCurrentUserCache();
     return null;
   }
 }
@@ -142,7 +175,16 @@ export async function signUp(input: {
     });
 
     setAuthToken(response.token);
-    cache.currentUser = { ...response.user, isAdmin: false };
+    const userWithAdmin = { ...response.user, isAdmin: false };
+    setCurrentUserCache(userWithAdmin);
+
+    // Load data after successful signup
+    await Promise.all([
+      getCourses(),
+      getAssessments(),
+      getSubmissions(),
+    ]);
+
     notifyListeners();
     return response.user;
   } catch (error) {
@@ -158,12 +200,28 @@ export async function login(email: string, password: string) {
     );
 
     setAuthToken(response.token);
-    cache.currentUser = {
+    const userWithAdmin = {
       ...response.user,
       isAdmin: response.user.role === "admin",
     };
+    setCurrentUserCache(userWithAdmin);
+
+    // Load data after successful login
+    const loadPromises = [
+      getCourses(),
+      getAssessments(),
+      getSubmissions(),
+    ];
+
+    // Only fetch users if admin
+    if (userWithAdmin.isAdmin) {
+      loadPromises.push(getUsers());
+    }
+
+    await Promise.all(loadPromises);
+
     notifyListeners();
-    return { isAdmin: cache.currentUser.isAdmin, role: cache.currentUser.role };
+    return { isAdmin: userWithAdmin.isAdmin, role: userWithAdmin.role };
   } catch (error) {
     throw error;
   }
@@ -174,16 +232,17 @@ export async function logout() {
     await authAPI.logout();
   } finally {
     setAuthToken(null);
-    cache.currentUser = null;
+    clearCurrentUserCache();
     cache.users = [];
     cache.courses = [];
     cache.assessments = [];
     cache.submissions = [];
+    cache.classes = [];
     notifyListeners();
   }
 }
 
-// ---------- Classes (mock - not in API yet) ----------
+// ---------- Classes ----------
 export function getClasses(): ClassItem[] {
   return cache.classes;
 }
@@ -254,7 +313,7 @@ export async function addMaterial(
     id: crypto.randomUUID(),
     uploadedAt: new Date().toISOString(),
   };
-  
+
   cache.courses = cache.courses.map((c) =>
     c.id === courseId ? { ...c, materials: [...c.materials, mat] } : c
   );
@@ -343,92 +402,7 @@ export async function gradeSubmission(
   notifyListeners();
 }
 
-// ---------- React Hooks ----------
-export function useStore() {
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    const unsubscribe = subscribe(() => setTick((t) => t + 1));
-    return unsubscribe;
-  }, []);
-}
-
-export function useAuth() {
-  const [user, setUser] = useState<(User & { isAdmin: boolean }) | null>(
-    cache.currentUser
-  );
-
-  useEffect(() => {
-    getCurrentUser().then(setUser);
-    const unsubscribe = subscribe(() => {
-      setUser(cache.currentUser);
-    });
-    return unsubscribe;
-  }, []);
-
-  return user;
-}
-
-export function useCourses() {
-  const [courses, setCourses] = useState<Course[]>(cache.courses);
-
-  useEffect(() => {
-    getCourses().then(setCourses);
-    const unsubscribe = subscribe(() => {
-      setCourses(cache.courses);
-    });
-    return unsubscribe;
-  }, []);
-
-  return courses;
-}
-
-export function useAssessments() {
-  const [assessments, setAssessments] = useState<Assessment[]>(
-    cache.assessments
-  );
-
-  useEffect(() => {
-    getAssessments().then(setAssessments);
-    const unsubscribe = subscribe(() => {
-      setAssessments(cache.assessments);
-    });
-    return unsubscribe;
-  }, []);
-
-  return assessments;
-}
-
-export function useSubmissions() {
-  const [submissions, setSubmissions] = useState<Submission[]>(
-    cache.submissions
-  );
-
-  useEffect(() => {
-    getSubmissions().then(setSubmissions);
-    const unsubscribe = subscribe(() => {
-      setSubmissions(cache.submissions);
-    });
-    return unsubscribe;
-  }, []);
-
-  return submissions;
-}
-
-export function useClasses() {
-  const [classes, setClasses] = useState<ClassItem[]>(cache.classes);
-
-  useEffect(() => {
-    const unsubscribe = subscribe(() => {
-      setClasses(cache.classes);
-    });
-    return unsubscribe;
-  }, []);
-
-  return classes;
-}
-
-// ─── Users (add this section) ───
+// ---------- Users ----------
 export async function getUsers(): Promise<User[]> {
   try {
     cache.users = await usersAPI.getAll();
@@ -440,16 +414,178 @@ export async function getUsers(): Promise<User[]> {
   }
 }
 
-export function useUsers() {
-  const [users, setUsers] = useState<User[]>(cache.users);
+// ---------- React Hooks ----------
+export function useStore() {
+  const [, setTick] = useState(0);
 
   useEffect(() => {
-    getUsers().then(setUsers);
-    const unsubscribe = subscribe(() => {
-      setUsers(cache.users);
+    const unsubscribe = subscribe(() => setTick((t) => t + 1));
+    return unsubscribe;
+  }, []);
+}
+
+// ─── Auth Hook ───
+export function useAuth() {
+  const [user, setUser] = useState<(User & { isAdmin: boolean }) | null>(
+    cache.currentUser
+  );
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getCurrentUser().then((u) => {
+      setUser(u);
+      setLoading(false);
     });
+
+    const unsubscribe = subscribe(() => {
+      setUser(cache.currentUser);
+    });
+
     return unsubscribe;
   }, []);
 
-  return users;
+  return user;
+}
+
+// ─── Courses Hook ───
+export function useCourses(): Course[] {
+  const [courses, setCourses] = useState<Course[]>(cache.courses || []);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token && !loaded) {
+      getCourses()
+        .then((data) => {
+          setCourses(Array.isArray(data) ? data : []);
+          setLoaded(true);
+        })
+        .catch((error) => {
+          console.error("Failed to load courses:", error);
+          setCourses([]);
+          setLoaded(true);
+        });
+    }
+
+    const unsubscribe = subscribe(() => {
+      setCourses(Array.isArray(cache.courses) ? cache.courses : []);
+    });
+
+    return unsubscribe;
+  }, [loaded]);
+
+  return Array.isArray(courses) ? courses : [];
+}
+
+// ─── Assessments Hook ───
+export function useAssessments(): Assessment[] {
+  const [assessments, setAssessments] = useState<Assessment[]>(
+    cache.assessments || []
+  );
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token && !loaded) {
+      getAssessments()
+        .then((data) => {
+          setAssessments(Array.isArray(data) ? data : []);
+          setLoaded(true);
+        })
+        .catch((error) => {
+          console.error("Failed to load assessments:", error);
+          setAssessments([]);
+          setLoaded(true);
+        });
+    }
+
+    const unsubscribe = subscribe(() => {
+      setAssessments(Array.isArray(cache.assessments) ? cache.assessments : []);
+    });
+
+    return unsubscribe;
+  }, [loaded]);
+
+  return Array.isArray(assessments) ? assessments : [];
+}
+
+// ─── Submissions Hook ───
+export function useSubmissions(): Submission[] {
+  const [submissions, setSubmissions] = useState<Submission[]>(
+    cache.submissions || []
+  );
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token && !loaded) {
+      getSubmissions()
+        .then((data) => {
+          setSubmissions(Array.isArray(data) ? data : []);
+          setLoaded(true);
+        })
+        .catch((error) => {
+          console.error("Failed to load submissions:", error);
+          setSubmissions([]);
+          setLoaded(true);
+        });
+    }
+
+    const unsubscribe = subscribe(() => {
+      setSubmissions(Array.isArray(cache.submissions) ? cache.submissions : []);
+    });
+
+    return unsubscribe;
+  }, [loaded]);
+
+  return Array.isArray(submissions) ? submissions : [];
+}
+
+// ─── Classes Hook ───
+export function useClasses(): ClassItem[] {
+  const [classes, setClasses] = useState<ClassItem[]>(cache.classes || []);
+
+  useEffect(() => {
+    const unsubscribe = subscribe(() => {
+      setClasses(cache.classes || []);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return classes;
+}
+
+// ─── Users Hook ───
+export function useUsers(): User[] {
+  const [users, setUsers] = useState<User[]>(cache.users || []);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    const user = cache.currentUser;
+    
+    if (token && !loaded && user?.isAdmin) {
+      getUsers()
+        .then((data) => {
+          setUsers(Array.isArray(data) ? data : []);
+          setLoaded(true);
+        })
+        .catch((error) => {
+          console.error("Failed to load users:", error);
+          setUsers([]);
+          setLoaded(true);
+        });
+    } else if (!user?.isAdmin) {
+      setLoaded(true);
+    }
+
+    const unsubscribe = subscribe(() => {
+      setUsers(Array.isArray(cache.users) ? cache.users : []);
+    });
+
+    return unsubscribe;
+  }, [loaded]);
+
+  return Array.isArray(users) ? users : [];
 }
