@@ -1,10 +1,7 @@
-// ============================================================
-// src/pages/courses/CreateCourse.tsx
-// ============================================================
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppShell, type AppShellVariant } from "@/components/AppShell";
-import { useAuth, createCourse, getUsers, type Course } from "@/lib/store";
+import { useAuth, useUsers, createCourse, type Course } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +10,7 @@ import { toast } from "@/hooks/use-toast";
 export default function CreateCourse() {
   const user = useAuth();
   const nav = useNavigate();
-  const allUsers = getUsers();
+  const allUsers = useUsers() || [];  // ← Use hook instead of function
   const learners = allUsers.filter((u) => u.role === "learner");
 
   const variant: AppShellVariant = user?.role === "admin" ? "admin" : "instructor";
@@ -65,7 +62,12 @@ export default function CreateCourse() {
           <h2 className="font-display text-lg font-bold">Course Details</h2>
           <div className="space-y-2">
             <Label htmlFor="title">Course Title</Label>
-            <Input id="title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Web Development Bootcamp" />
+            <Input 
+              id="title" 
+              value={form.title} 
+              onChange={(e) => setForm({ ...form, title: e.target.value })} 
+              placeholder="e.g. Web Development Bootcamp" 
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="desc">Description</Label>
@@ -93,7 +95,14 @@ export default function CreateCourse() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="weeks">Duration (weeks)</Label>
-              <Input id="weeks" type="number" min={1} max={52} value={form.durationWeeks} onChange={(e) => setForm({ ...form, durationWeeks: Number(e.target.value) })} />
+              <Input 
+                id="weeks" 
+                type="number" 
+                min={1} 
+                max={52} 
+                value={form.durationWeeks} 
+                onChange={(e) => setForm({ ...form, durationWeeks: Number(e.target.value) })} 
+              />
             </div>
           </div>
         </div>
@@ -107,7 +116,10 @@ export default function CreateCourse() {
           ) : (
             <div className="space-y-2">
               {learners.map((l) => (
-                <label key={l.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/60 px-4 py-3 transition-colors hover:bg-secondary/50">
+                <label 
+                  key={l.id} 
+                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/60 px-4 py-3 transition-colors hover:bg-secondary/50"
+                >
                   <input
                     type="checkbox"
                     checked={form.assignedLearners.includes(l.id)}

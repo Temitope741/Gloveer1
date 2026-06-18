@@ -565,6 +565,7 @@ export function useUsers(): User[] {
     const token = getAuthToken();
     const user = cache.currentUser;
     
+    // Only fetch if admin
     if (token && !loaded && user?.isAdmin) {
       getUsers()
         .then((data) => {
@@ -576,7 +577,8 @@ export function useUsers(): User[] {
           setUsers([]);
           setLoaded(true);
         });
-    } else if (!user?.isAdmin) {
+    } else {
+      setUsers([]);
       setLoaded(true);
     }
 
